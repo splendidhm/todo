@@ -26,19 +26,22 @@ html[data-theme="dark"] .row button,html[data-theme="dark"] #status{color:#e2ae9
 html[data-theme="dark"] .entry input::placeholder{color:#a9b5a3}
 html[data-theme="dark"] .row input{accent-color:#a3c28a}
 html[data-theme="dark"] :focus-visible{outline-color:#b3d69a}
-#theme-toggle{display:inline-flex;align-items:center;gap:8px;margin-left:auto}
-#theme-toggle::before{content:"";width:30px;height:18px;border-radius:12px;background:#74816b}
-#theme-toggle::after{content:"";position:absolute;width:12px;height:12px;border-radius:50%;background:#fff;margin-left:3px}
+body{padding-top:56px}
+#theme-toggle{position:fixed;top:16px;right:16px;z-index:100;display:inline-flex;align-items:center;gap:10px;min-height:44px;padding:10px 16px;border-radius:24px;font:600 14px system-ui;box-shadow:0 3px 12px #0002}
+#theme-toggle:hover{box-shadow:0 4px 16px #0004}
+#theme-toggle::before{content:"";flex-shrink:0;width:34px;height:20px;border-radius:12px;background:#74816b}
+#theme-toggle::after{content:"";position:absolute;left:20px;top:50%;transform:translateY(-50%);width:12px;height:12px;border-radius:50%;background:#fff;transition:left .18s ease}
 #theme-toggle[aria-pressed="true"]::before{background:#7eaa62}
-#theme-toggle[aria-pressed="true"]::after{margin-left:15px}
+#theme-toggle[aria-pressed="true"]::after{left:34px}
+@media(prefers-reduced-motion:reduce){#theme-toggle::after{transition:none}}
 </style><script>
 (()=>{
 const themeKey='todo-calendar-theme',button=document.createElement('button');
 button.id='theme-toggle';button.type='button';button.textContent='다크모드';
-button.setAttribute('aria-label','다크모드');document.querySelector('nav').append(button);
+button.setAttribute('aria-label','다크모드');document.body.append(button);
 let dark=window.matchMedia('(prefers-color-scheme: dark)').matches;
 try{const saved=localStorage.getItem(themeKey);if(saved==='dark'||saved==='light')dark=saved==='dark';}catch{}
-function apply(){document.documentElement.dataset.theme=dark?'dark':'light';button.setAttribute('aria-pressed',String(dark));}
+function apply(){document.documentElement.dataset.theme=dark?'dark':'light';button.setAttribute('aria-pressed',String(dark));button.textContent=dark?'다크모드 켜짐':'다크모드 꺼짐';button.title=dark?'밝은 모드로 전환':'다크모드로 전환';}
 button.addEventListener('click',()=>{dark=!dark;apply();try{localStorage.setItem(themeKey,dark?'dark':'light');}catch{}});
 apply();
 })();
