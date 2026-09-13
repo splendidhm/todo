@@ -1,0 +1,45 @@
+﻿<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>할 일 달력</title><style>
+*{box-sizing:border-box}body{margin:24px;font:14px system-ui;background:#f4f6f0;color:#35452f}main{max-width:1450px;margin:auto}nav{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:20px 0}button{cursor:pointer;padding:8px;border:1px solid #dbe2d4;border-radius:6px;background:white;color:#4d693a}button:disabled{opacity:.4}.wrap{overflow:auto;border:1px solid #dde4d4;border-radius:12px;background:white}#calendar,.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));min-width:1000px}.week{text-align:center;background:#eaf0e2;padding:14px 0}.day{min-height:175px;padding:12px 9px;border:1px solid #eef0e8}.outside{background:#fafbf7;color:#a2ad97}.today{background:#f0f7e6}.row{display:flex;align-items:center;gap:6px;padding:8px 0;border-bottom:1px solid #edf0e7}.row label{flex:1;min-width:0;overflow-wrap:anywhere;cursor:pointer}.done label{text-decoration:line-through;color:#9aa58f}.row input{accent-color:#638549;width:17px;height:17px;margin:0}.row button{border:0;padding:2px;color:#a16e58}.entry{display:flex;margin-top:10px}.entry input{width:100%;min-width:0;border:0;padding:8px 2px;background:transparent}.entry button{padding:4px 8px}footer{margin-top:16px;color:#77856b;line-height:1.8}#status{color:#a1633f}:focus-visible{outline:2px solid #638549;outline-offset:2px}</style>
+<main><h1>하루씩 / 할 일 달력</h1><p>날짜별로 입력하고 오른쪽 체크박스로 완료하세요.</p><nav><h2 id="month" aria-live="polite"></h2><button id="prev" aria-label="이전 달">‹</button><button id="next" aria-label="다음 달">›</button><button id="today">오늘</button><button id="clear">이번 달 완료 항목 삭제</button></nav><div class="wrap"><div class="week"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div><div id="calendar"></div></div><footer>Enter로 한 줄씩 추가 · 체크하면 취소선 · 완료 후 ×로 삭제<br>이 브라우저에 자동 저장됩니다. <span id="summary" aria-live="polite"></span></footer><p id="status" role="status"></p></main><script>
+'use strict';const $=s=>document.querySelector(s);let view=new Date();view.setDate(1);let tasks={};const storageKey='todo-calendar-v1';const key=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+try{const raw=JSON.parse(localStorage.getItem(storageKey)||'{}');if(!raw||typeof raw!=='object'||Array.isArray(raw))throw Error();for(const [k,v] of Object.entries(raw))if(/^\d{4}-\d{2}-\d{2}$/.test(k)&&Array.isArray(v))tasks[k]=v.filter(t=>t&&typeof t.text==='string'&&typeof t.id==='string'&&typeof t.done==='boolean');}catch{$('#status').textContent='저장 내용을 불러오지 못했습니다.';}
+function save(){try{localStorage.setItem(storageKey,JSON.stringify(tasks));$('#status').textContent='';}catch{$('#status').textContent='저장하지 못했습니다. 현재 내용은 이 창에서만 유지됩니다.';}}
+function keys(){return Object.keys(tasks).filter(k=>k.startsWith(key(view).slice(0,7)));}function summary(){const all=keys().flatMap(k=>tasks[k]),n=all.filter(t=>t.done).length;$('#summary').textContent=all.length+'개 중 '+n+'개 완료';$('#clear').disabled=!n;}
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;}
+function render(){$('#month').textContent=view.getFullYear()+'년 '+(view.getMonth()+1)+'월';$('#calendar').replaceChildren();const start=new Date(view.getFullYear(),view.getMonth(),1).getDay(),count=new Date(view.getFullYear(),view.getMonth()+1,0).getDate();for(let i=0;i<Math.ceil((start+count)/7)*7;i++){const date=new Date(view.getFullYear(),view.getMonth(),1-start+i),k=key(date),day=el('section','day'+(date.getMonth()!==view.getMonth()?' outside':'')+(k===key(new Date())?' today':''));day.setAttribute('aria-label',k);const list=el('div'),form=el('form','entry'),input=el('input'),add=el('button','','+');input.placeholder='+ 할 일 입력';input.maxLength=300;input.setAttribute('aria-label',k+' 할 일 입력');add.setAttribute('aria-label',k+' 할 일 추가');add.type='submit';form.append(input,add);
+function draw(){list.replaceChildren();for(const task of tasks[k]||[]){const row=el('div','row'+(task.done?' done':'')),label=el('label','',task.text),check=el('input');check.type='checkbox';check.checked=task.done;check.id='t-'+task.id;label.htmlFor=check.id;check.setAttribute('aria-label',task.text+' 완료');row.append(label);if(task.done){const remove=el('button','','×');remove.setAttribute('aria-label',task.text+' 삭제');remove.onclick=()=>{tasks[k]=tasks[k].filter(t=>t.id!==task.id);if(!tasks[k].length)delete tasks[k];save();draw();summary();input.focus();};row.append(remove);}check.onchange=()=>{task.done=check.checked;save();draw();summary();document.getElementById('t-'+task.id)?.focus();};row.append(check);list.append(row);}}
+form.onsubmit=e=>{e.preventDefault();const text=input.value.trim();if(!text)return;(tasks[k]??=[]).push({text,done:false,id:Date.now().toString(36)+Math.random().toString(36).slice(2)});save();input.value='';draw();summary();input.focus();};input.onkeydown=e=>{if(e.key==='Enter'&&e.isComposing)e.preventDefault();};draw();day.append(el('b','',date.getDate()),list,form);$('#calendar').append(day);}summary();}
+$('#prev').onclick=()=>{view=new Date(view.getFullYear(),view.getMonth()-1,1);render();};$('#next').onclick=()=>{view=new Date(view.getFullYear(),view.getMonth()+1,1);render();};$('#today').onclick=()=>{view=new Date();view.setDate(1);render();};$('#clear').onclick=()=>{for(const k of keys()){tasks[k]=tasks[k].filter(t=>!t.done);if(!tasks[k].length)delete tasks[k];}save();render();};render();
+</script><style>
+:root{color-scheme:light}html[data-theme="dark"]{color-scheme:dark}
+html[data-theme="dark"] body{background:#1e2420;color:#dce3d7}
+html[data-theme="dark"] button{background:#303a31;color:#d3e3c6;border-color:#4b594b}
+html[data-theme="dark"] .wrap{background:#272f29;border-color:#465145}
+html[data-theme="dark"] .week{background:#354132}
+html[data-theme="dark"] .day{border-color:#3d473d}
+html[data-theme="dark"] .outside{background:#222923;color:#a9b5a3}
+html[data-theme="dark"] .today{background:#35472f}
+html[data-theme="dark"] .row{border-color:#414c3e}
+html[data-theme="dark"] .done label,html[data-theme="dark"] footer{color:#aebba4}
+html[data-theme="dark"] .row button,html[data-theme="dark"] #status{color:#e2ae93}
+.entry input{color:inherit}.entry input::placeholder{color:#718066;opacity:1}
+html[data-theme="dark"] .entry input::placeholder{color:#a9b5a3}
+html[data-theme="dark"] .row input{accent-color:#a3c28a}
+html[data-theme="dark"] :focus-visible{outline-color:#b3d69a}
+#theme-toggle{display:inline-flex;align-items:center;gap:8px;margin-left:auto}
+#theme-toggle::before{content:"";width:30px;height:18px;border-radius:12px;background:#74816b}
+#theme-toggle::after{content:"";position:absolute;width:12px;height:12px;border-radius:50%;background:#fff;margin-left:3px}
+#theme-toggle[aria-pressed="true"]::before{background:#7eaa62}
+#theme-toggle[aria-pressed="true"]::after{margin-left:15px}
+</style><script>
+(()=>{
+const themeKey='todo-calendar-theme',button=document.createElement('button');
+button.id='theme-toggle';button.type='button';button.textContent='다크모드';
+button.setAttribute('aria-label','다크모드');document.querySelector('nav').append(button);
+let dark=window.matchMedia('(prefers-color-scheme: dark)').matches;
+try{const saved=localStorage.getItem(themeKey);if(saved==='dark'||saved==='light')dark=saved==='dark';}catch{}
+function apply(){document.documentElement.dataset.theme=dark?'dark':'light';button.setAttribute('aria-pressed',String(dark));}
+button.addEventListener('click',()=>{dark=!dark;apply();try{localStorage.setItem(themeKey,dark?'dark':'light');}catch{}});
+apply();
+})();
+</script></html>
