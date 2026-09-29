@@ -1,16 +1,150 @@
-﻿<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>할 일 달력</title><style>
+<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>할 일 달력</title><style>
 *{box-sizing:border-box}body{margin:24px;font:14px system-ui;background:#f4f6f0;color:#35452f}main{max-width:1450px;margin:auto}nav{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:20px 0}button{cursor:pointer;padding:8px;border:1px solid #dbe2d4;border-radius:6px;background:white;color:#4d693a}button:disabled{opacity:.4}.wrap{overflow:auto;border:1px solid #dde4d4;border-radius:12px;background:white}#calendar,.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));min-width:1000px}.week{text-align:center;background:#eaf0e2;padding:14px 0}.day{min-height:175px;padding:12px 9px;border:1px solid #eef0e8}.outside{background:#fafbf7;color:#a2ad97}.today{background:#f0f7e6}.row{display:flex;align-items:center;gap:6px;padding:8px 0;border-bottom:1px solid #edf0e7}.row label{flex:1;min-width:0;overflow-wrap:anywhere;cursor:pointer}.done label{text-decoration:line-through;color:#9aa58f}.row input{accent-color:#638549;width:17px;height:17px;margin:0}.row button{border:0;padding:2px;color:#a16e58}.entry{display:flex;margin-top:10px}.entry input{width:100%;min-width:0;border:0;padding:8px 2px;background:transparent}.entry button{padding:4px 8px}footer{margin-top:16px;color:#77856b;line-height:1.8}#status{color:#a1633f}:focus-visible{outline:2px solid #638549;outline-offset:2px}</style>
-<main><h1>하루씩 / 할 일 달력</h1><p>날짜별로 입력하고 오른쪽 체크박스로 완료하세요.</p><nav><h2 id="month" aria-live="polite"></h2><button id="prev" aria-label="이전 달">‹</button><button id="next" aria-label="다음 달">›</button><button id="today">오늘</button><button id="clear">이번 달 완료 항목 삭제</button></nav><div class="wrap"><div class="week"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div><div id="calendar"></div></div><footer>Enter로 한 줄씩 추가 · 체크하면 취소선 · 완료 후 ×로 삭제<br>이 브라우저에 자동 저장됩니다. <span id="summary" aria-live="polite"></span></footer><p id="status" role="status"></p></main><script>
+<main><a href="../about/about.html" style="color:inherit;display:inline-block;margin-bottom:12px">← 자기소개 페이지</a><h1>하루씩 / 할 일 달력</h1><p>날짜별로 입력하고 오른쪽 체크박스로 완료하세요.</p>
+<section class="diary" aria-labelledby="diary-heading">
+  <h2 id="diary-heading">하루 메모</h2>
+  <label class="diary-date-label" for="diary-date">기록할 날짜</label>
+  <input id="diary-date" type="date" min="0001-01-01" max="9999-12-31" required>
+  <label class="diary-body-label" for="diary-body">그날 있었던 일</label>
+  <textarea id="diary-body" rows="9" placeholder="오늘의 이야기를 편하게 남겨보세요." aria-describedby="diary-help diary-status"></textarea>
+  <p id="diary-help">이 브라우저에 자동 저장됩니다. 브라우저 데이터를 삭제하면 메모도 삭제됩니다.</p>
+  <p id="diary-status" role="status" aria-live="polite"></p>
+</section>
+<nav><h2 id="month" aria-live="polite"></h2><button id="prev" aria-label="이전 달">‹</button><button id="next" aria-label="다음 달">›</button><button id="today">오늘</button><button id="clear">이번 달 완료 항목 삭제</button></nav><div class="wrap"><div class="week"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div><div id="calendar"></div></div><footer>Enter로 한 줄씩 추가 · 체크하면 취소선 · 완료 후 ×로 삭제<br>이 브라우저에 자동 저장됩니다. <span id="summary" aria-live="polite"></span></footer><p id="status" role="status"></p></main><script>
 'use strict';const $=s=>document.querySelector(s);let view=new Date();view.setDate(1);let tasks={};const storageKey='todo-calendar-v1';const key=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-try{const raw=JSON.parse(localStorage.getItem(storageKey)||'{}');if(!raw||typeof raw!=='object'||Array.isArray(raw))throw Error();for(const [k,v] of Object.entries(raw))if(/^\d{4}-\d{2}-\d{2}$/.test(k)&&Array.isArray(v))tasks[k]=v.filter(t=>t&&typeof t.text==='string'&&typeof t.id==='string'&&typeof t.done==='boolean');}catch{$('#status').textContent='저장 내용을 불러오지 못했습니다.';}
+function normalizeDueDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return '';
+  const date = new Date(value + 'T00:00:00');
+  return !Number.isNaN(date.getTime()) && key(date) === value ? value : '';
+}
+// Daily diary storage is independent from task data and calendar rendering.
+(() => {
+  const diaryKey = 'todo-diary-v1';
+  const dateInput = $('#diary-date');
+  const bodyInput = $('#diary-body');
+  const status = $('#diary-status');
+  let entries = Object.create(null);
+  let selectedDate = key(new Date());
+  let loadFailed = false;
+  let saveFailed = false;
+
+  function showStatus(message, error = false) {
+    status.textContent = message;
+    status.classList.toggle('error', error);
+  }
+
+  try {
+    const raw = JSON.parse(localStorage.getItem(diaryKey) || '{}');
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw) ||
+        Object.entries(raw).some(([date, body]) => !normalizeDueDate(date) || typeof body !== 'string')) {
+      throw new Error('Invalid diary data');
+    }
+    Object.assign(entries, raw);
+  } catch {
+    loadFailed = true;
+    showStatus('메모를 불러오지 못했습니다. 기존 저장 내용 보호를 위해 자동 저장을 중지했습니다. 새로고침해 다시 시도해 주세요. 현재 입력은 이 창에서만 유지됩니다.', true);
+  }
+
+  function saveDiary() {
+    if (bodyInput.value === '') delete entries[selectedDate];
+    else entries[selectedDate] = bodyInput.value;
+    if (loadFailed) return;
+    try {
+      localStorage.setItem(diaryKey, JSON.stringify(entries));
+      saveFailed = false;
+      showStatus('저장됨');
+    } catch {
+      saveFailed = true;
+      showStatus('저장하지 못했습니다. 현재 내용은 이 창에서만 유지됩니다.', true);
+    }
+  }
+
+  dateInput.value = selectedDate;
+  bodyInput.value = entries[selectedDate] || '';
+  if (!loadFailed) showStatus(entries[selectedDate] ? '저장됨' : '입력하면 자동 저장됩니다.');
+  bodyInput.addEventListener('input', saveDiary);
+  bodyInput.addEventListener('compositionend', saveDiary);
+  dateInput.addEventListener('change', () => {
+    const nextDate = normalizeDueDate(dateInput.value);
+    if (!nextDate) {
+      dateInput.value = selectedDate;
+      return;
+    }
+    selectedDate = nextDate;
+    bodyInput.value = entries[selectedDate] || '';
+    if (!loadFailed && !saveFailed) {
+      showStatus(entries[selectedDate] ? '저장됨' : '입력하면 자동 저장됩니다.');
+    }
+  });
+})();
+function dueDateField(value, description, onChange) {
+  const label = el('label', 'due-field'), caption = el('span', '', '\uB9C8\uAC10\uC77C'), field = el('input');
+  field.type = 'date';
+  field.max = '9999-12-31';
+  field.value = normalizeDueDate(value);
+  field.setAttribute('aria-label', description + ' \uB9C8\uAC10\uC77C (\uC120\uD0DD)');
+  if (onChange) field.onchange = () => onChange(normalizeDueDate(field.value));
+  label.append(caption, field);
+  return {label, field};
+}
+try{const raw=JSON.parse(localStorage.getItem(storageKey)||'{}');if(!raw||typeof raw!=='object'||Array.isArray(raw))throw Error();for(const [k,v] of Object.entries(raw))if(/^\d{4}-\d{2}-\d{2}$/.test(k)&&Array.isArray(v))tasks[k]=v.filter(t=>t&&typeof t.text==='string'&&typeof t.id==='string'&&typeof t.done==='boolean').map(t=>({...t,dueDate:normalizeDueDate(t.dueDate)}));}catch{$('#status').textContent='저장 내용을 불러오지 못했습니다.';}
 function save(){try{localStorage.setItem(storageKey,JSON.stringify(tasks));$('#status').textContent='';}catch{$('#status').textContent='저장하지 못했습니다. 현재 내용은 이 창에서만 유지됩니다.';}}
 function keys(){return Object.keys(tasks).filter(k=>k.startsWith(key(view).slice(0,7)));}function summary(){const all=keys().flatMap(k=>tasks[k]),n=all.filter(t=>t.done).length;$('#summary').textContent=all.length+'개 중 '+n+'개 완료';$('#clear').disabled=!n;}
 function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;}
-function render(){$('#month').textContent=view.getFullYear()+'년 '+(view.getMonth()+1)+'월';$('#calendar').replaceChildren();const start=new Date(view.getFullYear(),view.getMonth(),1).getDay(),count=new Date(view.getFullYear(),view.getMonth()+1,0).getDate();for(let i=0;i<Math.ceil((start+count)/7)*7;i++){const date=new Date(view.getFullYear(),view.getMonth(),1-start+i),k=key(date),day=el('section','day'+(date.getMonth()!==view.getMonth()?' outside':'')+(k===key(new Date())?' today':''));day.setAttribute('aria-label',k);const list=el('div'),form=el('form','entry'),input=el('input'),add=el('button','','+');input.placeholder='+ 할 일 입력';input.maxLength=300;input.setAttribute('aria-label',k+' 할 일 입력');add.setAttribute('aria-label',k+' 할 일 추가');add.type='submit';form.append(input,add);
-function draw(){list.replaceChildren();for(const task of tasks[k]||[]){const row=el('div','row'+(task.done?' done':'')),label=el('label','',task.text),check=el('input');check.type='checkbox';check.checked=task.done;check.id='t-'+task.id;label.htmlFor=check.id;check.setAttribute('aria-label',task.text+' 완료');row.append(label);if(task.done){const remove=el('button','','×');remove.setAttribute('aria-label',task.text+' 삭제');remove.onclick=()=>{tasks[k]=tasks[k].filter(t=>t.id!==task.id);if(!tasks[k].length)delete tasks[k];save();draw();summary();input.focus();};row.append(remove);}check.onchange=()=>{task.done=check.checked;save();draw();summary();document.getElementById('t-'+task.id)?.focus();};row.append(check);list.append(row);}}
-form.onsubmit=e=>{e.preventDefault();const text=input.value.trim();if(!text)return;(tasks[k]??=[]).push({text,done:false,id:Date.now().toString(36)+Math.random().toString(36).slice(2)});save();input.value='';draw();summary();input.focus();};input.onkeydown=e=>{if(e.key==='Enter'&&e.isComposing)e.preventDefault();};draw();day.append(el('b','',date.getDate()),list,form);$('#calendar').append(day);}summary();}
+const itemTasks = new WeakMap();
+function updateOverdue(item, task, today = key(new Date())) {
+  const overdue = !task.done && !!task.dueDate && task.dueDate < today;
+  item.classList.toggle('overdue', overdue);
+  item.querySelector('.overdue-note').textContent = overdue ? '\uB9C8\uAC10\uC77C \uC9C0\uB0A8' : '';
+}
+function refreshOverdue() {
+  const today = key(new Date());
+  document.querySelectorAll('.task-item').forEach(item => updateOverdue(item, itemTasks.get(item), today));
+  document.querySelectorAll('.day').forEach(day => day.classList.toggle('today', day.getAttribute('aria-label') === today));
+}
+let midnightTimer;
+function scheduleMidnightRefresh() {
+  clearTimeout(midnightTimer);
+  refreshOverdue();
+  const now = new Date();
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  midnightTimer = setTimeout(scheduleMidnightRefresh, midnight - now + 100);
+}
+window.addEventListener('focus', scheduleMidnightRefresh);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) scheduleMidnightRefresh();
+});
+function render(){$('#month').textContent=view.getFullYear()+'년 '+(view.getMonth()+1)+'월';$('#calendar').replaceChildren();const start=new Date(view.getFullYear(),view.getMonth(),1).getDay(),count=new Date(view.getFullYear(),view.getMonth()+1,0).getDate();for(let i=0;i<Math.ceil((start+count)/7)*7;i++){const date=new Date(view.getFullYear(),view.getMonth(),1-start+i),k=key(date),day=el('section','day'+(date.getMonth()!==view.getMonth()?' outside':'')+(k===key(new Date())?' today':''));day.setAttribute('aria-label',k);const list=el('div'),form=el('form','entry'),input=el('input'),add=el('button','','+');input.placeholder='+ 할 일 입력';input.maxLength=300;input.setAttribute('aria-label',k+' 할 일 입력');add.setAttribute('aria-label',k+' 할 일 추가');add.type='submit';form.append(input,add);const due=dueDateField('',k);form.append(due.label);
+function draw(){list.replaceChildren();for(const task of tasks[k]||[]){const row=el('div','row'+(task.done?' done':'')),label=el('label','',task.text),check=el('input');check.type='checkbox';check.checked=task.done;check.id='t-'+task.id;label.htmlFor=check.id;check.setAttribute('aria-label',task.text+' 완료');row.append(label);if(task.done){const remove=el('button','','×');remove.setAttribute('aria-label',task.text+' 삭제');remove.onclick=()=>{tasks[k]=tasks[k].filter(t=>t.id!==task.id);if(!tasks[k].length)delete tasks[k];save();draw();summary();input.focus();};row.append(remove);}check.onchange=()=>{task.done=check.checked;save();draw();summary();document.getElementById('t-'+task.id)?.focus();};row.append(check);const item=el('div','task-item'),deadline=dueDateField(task.dueDate,task.text,value=>{task.dueDate=value;save();updateOverdue(item,task);});const note=el('span','overdue-note');note.setAttribute('aria-live','polite');item.append(row,deadline.label,note);itemTasks.set(item,task);updateOverdue(item,task);list.append(item);}}
+form.onsubmit=e=>{e.preventDefault();const text=input.value.trim();if(!text)return;(tasks[k]??=[]).push({text,done:false,dueDate:normalizeDueDate(due.field.value),id:Date.now().toString(36)+Math.random().toString(36).slice(2)});save();input.value='';due.field.value='';draw();summary();input.focus();};input.onkeydown=e=>{if(e.key==='Enter'&&e.isComposing)e.preventDefault();};draw();day.append(el('b','',date.getDate()),list,form);$('#calendar').append(day);}summary();}
 $('#prev').onclick=()=>{view=new Date(view.getFullYear(),view.getMonth()-1,1);render();};$('#next').onclick=()=>{view=new Date(view.getFullYear(),view.getMonth()+1,1);render();};$('#today').onclick=()=>{view=new Date();view.setDate(1);render();};$('#clear').onclick=()=>{for(const k of keys()){tasks[k]=tasks[k].filter(t=>!t.done);if(!tasks[k].length)delete tasks[k];}save();render();};render();
+scheduleMidnightRefresh();
 </script><style>
+.diary{margin:24px 0;padding:24px;border:1px solid #dde4d4;border-radius:12px;background:#fff}
+.diary h2{margin:0 0 20px}.diary-date-label{margin-right:8px}
+.diary input,.diary textarea{max-width:100%;border:1px solid #a2ad97;border-radius:6px;background:transparent;color:inherit;font:inherit;padding:10px}
+.diary-body-label{display:block;margin:20px 0 8px;font-weight:600}
+.diary textarea{display:block;width:100%;min-height:220px;resize:vertical;line-height:1.8}
+.diary textarea::placeholder{color:#718066;opacity:1}
+#diary-help{font-size:12px;line-height:1.6;color:#65745a}
+#diary-status{min-height:1.5em;margin-bottom:0;color:#4d693a}
+#diary-status.error{color:#a1633f}
+html[data-theme="dark"] .diary{background:#272f29;border-color:#465145}
+html[data-theme="dark"] .diary input,html[data-theme="dark"] .diary textarea{border-color:#718066}
+html[data-theme="dark"] .diary textarea::placeholder,html[data-theme="dark"] #diary-help{color:#a9b5a3}
+html[data-theme="dark"] #diary-status{color:#b3d69a}
+html[data-theme="dark"] #diary-status.error{color:#e2ae93}
+@media(max-width:480px){.diary{padding:16px}.diary-date-label{display:block;margin:0 0 8px}.diary input,.diary textarea{font-size:16px}}
+.entry{flex-wrap:wrap}.entry>input{flex:1;width:0}.entry>.due-field{flex-basis:100%}
+.due-field{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:6px 0;font-size:12px}
+.due-field input{width:100%;min-width:0;padding:5px;border:1px solid #a2ad97;border-radius:4px;background:transparent;color:inherit;font:inherit}
+.task-item{padding-bottom:6px}.task-item .row{border-bottom:0}
+.task-item.overdue{border-left:3px solid #b42318;padding-left:6px}
+.task-item.overdue .row label,.task-item.overdue .due-field,.overdue-note{color:#b42318}
+.overdue-note{display:block;font-size:12px;font-weight:600}
+.overdue-note:empty{display:none}
+html[data-theme="dark"] .task-item.overdue{border-left-color:#ffaaa2}
+html[data-theme="dark"] .task-item.overdue .row label,html[data-theme="dark"] .task-item.overdue .due-field,html[data-theme="dark"] .overdue-note{color:#ffaaa2}
 :root{color-scheme:light}html[data-theme="dark"]{color-scheme:dark}
 html[data-theme="dark"] body{background:#1e2420;color:#dce3d7}
 html[data-theme="dark"] button{background:#303a31;color:#d3e3c6;border-color:#4b594b}
